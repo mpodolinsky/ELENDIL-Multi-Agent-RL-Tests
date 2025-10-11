@@ -10,7 +10,7 @@
 #   Agent A
 #       Movement - [L,R,U,D] (size 1 step)
 #   Agent B
-#       Movement - [L,R,U,D,H+,H-] (step size proportional to it's height state)
+#       Movement - [L,R,U,D,NOOP,H+,H-] (step size proportional to it's height state)
 #       Communication to agent
 #           [NaN, NaN] if target, agent, or both are outside it's observability regio
 #           [x_target,y_target] (referece frame is arbitrary since B has full knowledge of )

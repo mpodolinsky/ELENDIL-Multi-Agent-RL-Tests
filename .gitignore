@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+.venv/
+env/
+venv/
+
+# Data and results
+data/
+results/
+logs/
+runs/
+checkpoints/
+*.pth
+*.pt
+wandb/
+videos/
+models/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
