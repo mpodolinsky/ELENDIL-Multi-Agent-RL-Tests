@@ -1,0 +1,59 @@
+# ================================
+# AgileRL IPPO Default Parameters
+# IPPO: Independent Proximal Policy Optimization
+# ================================
+
+# --- Environment ---
+observation_spaces: null          # list[spaces.Space] or spaces.Dict (must be provided)
+action_spaces: null               # list[spaces.Space] or spaces.Dict (must be provided)
+agent_ids: null                   # list of agent IDs
+index: 0                          # integer index (used in evolution)
+hp_config: null                   # hyperparameter mutation config (disabled if None)
+net_config: null                  # network configuration dict
+
+# --- Training Hyperparameters ---
+# https://docs.agilerl.com/en/latest/api/algorithms/ippo.html
+# Notion @General Advantage Estimation | Advantage | Actor-Critic
+# Notion @PPO | hyperparameters | action_std_init, clip_coef, ent_coef, vf_coef, max_grad_norm
+batch_size: 64                    # default size of mini-batch per PPO update
+lr: 1.0e-4                        # default earning rate for optimizer 
+learn_step: 2048                  # default number of steps before each learning update
+gamma: 0.99                       # default discount factor
+gae_lambda: 0.95                  # default GAE (General Advantage Estimation) lambda
+mut: null                         # recent mutation (for evolution)
+action_std_init: 0.0              # initial std for continuous actions
+# --> stochastic policies output a mean and std dev, action_std_init sets the initial std dev before training begins 
+clip_coef: 0.2                    # default PPO clipping coefficient
+# --> prevents destabilizing policy jumps by clipping the new to old action probabilities to [1-clip;1+clip]
+ent_coef: 0.01                    # defaul entropy regularization coefficient
+# --> rewards higher policy entropy (effectively rewarding more exploration). Higher stays random longer, may take time to converge. Lower, exploits earlier may not find the optimal policy.
+vf_coef: 0.5                      # default value function loss coefficient
+# --> balances weight of the critic (value function) loss relative to the policy (actor) loss in the total PPO objective
+# --> Higher means the critic accuracy is prioritized, may slow policy learning
+# --> Lower means faster policy adaptation but noisier value estimates
+max_grad_norm: 0.5                # default gradient clipping norm
+# --> prevents exploding gradients (esp. when advantage or rewards are high)
+target_kl: null                   # KL divergence target for early stopping
+normalize_images: true            # normalize image obs to [0,1]
+update_epochs: 4                  # default number of PPO epochs per update
+
+# --- Architecture ---
+actor_networks: null              # custom actor networks (ModuleDict)
+critic_networks: null             # custom critic networks (ModuleDict)
+action_batch_size: null           # batch size for inference (None = all at once)
+
+# --- Compute & Acceleration ---
+device: "cuda"                     # "cpu" or "cuda"
+accelerator: null                 # accelerate.Accelerator() for distributed training
+torch_compiler: null              # "default" | "reduce-overhead" | "max-autotune"
+wrap: true                        # wrap models for distributed training
+
+# --- Notes ---
+# rollout_steps usually == learn_step
+# net_config example:
+#   actor:
+#     hidden_sizes: [64, 64]
+#     activation: "tanh"
+#   critic:
+#     hidden_sizes: [64, 64]
+#     activation: "tanh"
