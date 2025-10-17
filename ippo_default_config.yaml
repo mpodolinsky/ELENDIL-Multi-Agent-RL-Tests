@@ -2,6 +2,8 @@
 # AgileRL IPPO Default Parameters
 # IPPO: Independent Proximal Policy Optimization
 # ================================
+num_envs: 8
+max_steps: 1000000
 
 # --- Environment ---
 observation_spaces: null          # list[spaces.Space] or spaces.Dict (must be provided)
@@ -9,14 +11,18 @@ action_spaces: null               # list[spaces.Space] or spaces.Dict (must be p
 agent_ids: null                   # list of agent IDs
 index: 0                          # integer index (used in evolution)
 hp_config: null                   # hyperparameter mutation config (disabled if None)
-net_config: null                  # network configuration dict
+# net_config: null
+net_config: {                     # network configuration dict
+      "encoder_config": {'hidden_size': [128, 128]},  # Network head hidden size used in HeMAC paper 10.48550/arXiv.2509.19512
+      "head_config": {'hidden_size': [128]}           # Network head hidden size used in HeMAC paper 10.48550/arXiv.2509.19512
+      }                           
 
 # --- Training Hyperparameters ---
 # https://docs.agilerl.com/en/latest/api/algorithms/ippo.html
 # Notion @General Advantage Estimation | Advantage | Actor-Critic
 # Notion @PPO | hyperparameters | action_std_init, clip_coef, ent_coef, vf_coef, max_grad_norm
 batch_size: 64                    # default size of mini-batch per PPO update
-lr: 1.0e-4                        # default earning rate for optimizer 
+lr: 0.0004                       # default earning rate for optimizer used in HeMAC paper 10.48550/arXiv.2509.19512
 learn_step: 2048                  # default number of steps before each learning update
 gamma: 0.99                       # default discount factor
 gae_lambda: 0.95                  # default GAE (General Advantage Estimation) lambda
