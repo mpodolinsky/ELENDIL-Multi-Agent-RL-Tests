@@ -8,7 +8,7 @@
 
 # Action space
 #   Agent A
-#       Movement - [L,R,U,D] (size 1 step)
+#       Movement - [L,R,U,D,NOOP] (size 1 step)
 #   Agent B
 #       Movement - [L,R,U,D,NOOP,H+,H-] (step size proportional to it's height state)
 #       Communication to agent

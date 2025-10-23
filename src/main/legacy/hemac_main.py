@@ -3,7 +3,7 @@ import yaml
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from src.test.hemac_test import record_tests
-from src.train.hemac_train import train
+from train.legacy.hemac_train import train
 import torch
 
 # Completely disable X11

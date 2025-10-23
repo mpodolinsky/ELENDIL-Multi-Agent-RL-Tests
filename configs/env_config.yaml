@@ -1,0 +1,10 @@
+render_mode: rgb_array
+size: 7
+agents: None
+no_target: False
+enable_obstacles: True
+num_obstacles: 3
+show_fov_display: False
+target_config: None
+lambda_fov: 0.5 # 1: Max punishment for being detected, 0: No punishment for being detected
+max_steps: 500
