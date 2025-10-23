@@ -26,3 +26,6 @@ models/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+TODO.md
