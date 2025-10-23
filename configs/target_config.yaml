@@ -1,0 +1,8 @@
+name: 'moving_target'
+color: [255, 100, 100]
+movement_speed: 1
+movement_range: 1
+smooth_movement: True
+box_cells: 3
+outline_width: 3
+box_scale: 1

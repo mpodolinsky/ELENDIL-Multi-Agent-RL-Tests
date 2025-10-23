@@ -1,0 +1,6 @@
+name: "alpha"
+color: [0, 200, 255]
+outline_width: 2
+box_scale: 0.8
+fov_size: 5
+show_target_coords: False
