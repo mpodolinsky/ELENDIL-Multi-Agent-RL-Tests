@@ -1,6 +1,6 @@
 # Size and steps
 size: 15
-max_steps: 500
+max_steps: 250
 
 # Rendering
 render_mode: "rgb_array"

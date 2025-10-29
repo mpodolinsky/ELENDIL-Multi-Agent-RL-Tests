@@ -24,14 +24,30 @@ This repository implements and evaluates various MARL algorithms for heterogeneo
 
 3. **Train agents:**
    ```bash
-   python src/main/custom_env_main.py
+   # ELENDIL environment training
+   python src/elendil/main/custom_env_main.py
+   
+   # HeMAC training (if using AgileRL)
+   python hemac/train/simple_push_v3_train.py
    ```
 
 ## Structure
 
-- `src/main/` - Main training scripts
-- `src/envs/` - Environment definitions
+### HeMAC (Heterogeneous Multi-Agent Control)
+- `hemac/train/` - HeMAC training scripts (IPPO with AgileRL)
+- `hemac/test/` - HeMAC evaluation scripts
+- `hemac/docs/` - HeMAC documentation
+
+### ELENDIL Environment
+- `src/elendil/main/` - Main training scripts
+- `src/elendil/envs/` - Environment definitions
+- `src/elendil/wrappers/` - Environment wrappers
+- `src/elendil/docs/` - ELENDIL documentation
+
+### General
 - `src/agents/` - Agent implementations
 - `src/train/` - Training utilities
 - `src/test/` - Evaluation scripts
 - `configs/` - Configuration files
+
+See `STRUCTURE.md` for detailed directory organization.

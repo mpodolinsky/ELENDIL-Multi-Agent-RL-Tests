@@ -35,7 +35,7 @@ from gymnasium import spaces
  
 # Configuration file paths
 ground_agent_config_path = "configs/agent_configs/ground_agent.yaml"
-# air_observer_config_path = "configs/agent_configs/air_observer_agent.yaml"
+air_observer_config_path = "configs/agent_configs/air_observer_agent.yaml"
 target_config_path = "configs/target_configs/target_config.yaml"
 env_config_path = "configs/env_configs/medium_env_obstacles.yaml"
 
@@ -50,21 +50,22 @@ with open(target_config_path, "r") as f:
 with open(ground_agent_config_path, "r") as f:
     ground_agent_config = yaml.safe_load(f)
 
-# with open(air_observer_config_path, "r") as f:
-#     air_observer_config = yaml.safe_load(f)
+with open(air_observer_config_path, "r") as f:
+    air_observer_config = yaml.safe_load(f)
 
 # Create list of agent configurations
 # The environment will automatically instantiate agents from these configs!
 agent_configs = [
-    ground_agent_config
+    # ground_agent_config
+    air_observer_config
 ]
 
 # WandB configuration
 
 config = {
     "env_name":             "GridWorldEnvParallel",
-    "total_timesteps":      250000,
-    "num_envs":             8,                           # 8 parallel environments using our wrapper
+    "total_timesteps":      1_000_000,  # Reduced for stability testing
+    "num_envs":             4,                           # Reduced to 2 for memory optimization
     "env_config":           {**env_config},
     "agent_config":         {**ground_agent_config},
     "target_config":        {**target_config},
@@ -252,9 +253,9 @@ if __name__ == '__main__':
     # WandB initialization
     run = wandb.init(
         project=            "ELENDIL",
-        name=               f"ELENDIL_parallel_single_env_medium_obstacles_1g1t_ppo_{time.strftime('%Y%m%d-%H%M%S')}",
-        tags=               ["medium_env_obstacles", "elendil", "parallel", "1g1t", "ppo", "single_env", "supersuit"],
-        notes=              "ELENDIL parallel environment with SuperSuit vectorization (single env), 1 ground agent, 1 target, medium env, PPO.",
+        name=               f"ELENDIL_parallel_4_envs_medium_obstacles_1a1t_ppo_{time.strftime('%Y%m%d-%H%M%S')}",
+        tags=               ["medium_env_obstacles", "elendil", "parallel", "1a1t", "ppo", "4_envs", "supersuit"],
+        notes=              "ELENDIL parallel environment with SuperSuit vectorization (single env), 1 air observer agent, 1 target, medium env, PPO, using the standard 1-cell detection method.",
         config=             config,
         sync_tensorboard=   True,  # auto-upload sb3's tensorboard metrics
         monitor_gym=        True,  # auto-upload the videos of agents playing the game
@@ -291,36 +292,83 @@ if __name__ == '__main__':
     print(f"✅ Observation space: {env.observation_space}")
     print(f"✅ Action space: {env.action_space}")
     
-    # Skip video recording for now to debug observation format issues
-    # TODO: Re-enable video recording once observation format is stable
-    print("⚠️  Video recording disabled for debugging")
+    # Wrap for video recording
+    # Calculate video recording frequency (every 1/20th of total episodes for more frequent recording)
+    episode_steps = env_config["max_steps"]
+    total_timesteps = config["total_timesteps"]
+    num_episodes = total_timesteps // (episode_steps * num_envs)
+    record_interval = max(1, num_episodes // 20) * episode_steps * num_envs  # More frequent recording
     
-    # # Wrap for video recording
-    # # Calculate video recording frequency (every 1/10th of total episodes)
-    # episode_steps = env_config["max_steps"]
-    # total_timesteps = config["total_timesteps"]
-    # num_episodes = total_timesteps // (episode_steps * num_envs)
-    # record_interval = max(1, num_episodes // 10) * episode_steps * num_envs
-    # 
-    # env = VecVideoRecorder(
-    #     env,
-    #     f"wandb/latest-run/videos/{run.id}",
-    #     record_video_trigger=lambda x: x % record_interval == 0,
-    #     video_length=episode_steps,
-    #     name_prefix=f"training-video"
-    # )
+    # Memory optimization: Reduce video recording frequency to save memory
+    record_interval = max(record_interval, 20000)  # Minimum 20k steps between videos
+    
+    env = VecVideoRecorder(
+        env,
+        f"wandb/latest-run/videos/{run.id}",
+        record_video_trigger=lambda x: x % record_interval == 0,
+        video_length=episode_steps,
+        name_prefix=f"training-video"
+    )
+    
+    print(f"✅ Video recording enabled (every {record_interval} steps)")
+    print(f"📊 Expected videos by end of training: {total_timesteps // record_interval}")
     
     # Initialize Model
     model = PPO(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{run.id}")
     
-    # Train the model
+    # Add memory monitoring
+    import psutil
+    import gc
+    
+    def log_memory_usage():
+        memory = psutil.virtual_memory()
+        print(f"🔍 Memory usage: {memory.percent:.1f}% ({memory.used/1024**3:.1f}GB/{memory.total/1024**3:.1f}GB)")
+        if memory.percent > 85:
+            print("⚠️  WARNING: High memory usage detected!")
+            gc.collect()  # Force garbage collection
+            print("🧹 Garbage collection performed")
+    
+    log_memory_usage()
+    
+    # Create custom callback for memory monitoring
+    from stable_baselines3.common.callbacks import BaseCallback
+    
+    class MemoryCallback(BaseCallback):
+        def __init__(self, check_freq: int, verbose=1):
+            super(MemoryCallback, self).__init__(verbose)
+            self.check_freq = check_freq
+            self.memory_threshold = 90  # Kill if memory > 90%
+            
+        def _on_step(self) -> bool:
+            if self.n_calls % self.check_freq == 0:
+                memory = psutil.virtual_memory()
+                if self.verbose > 0:
+                    print(f"🔍 Step {self.n_calls}: Memory {memory.percent:.1f}%")
+                
+                if memory.percent > self.memory_threshold:
+                    print(f"🚨 CRITICAL: Memory usage {memory.percent:.1f}% exceeds threshold!")
+                    print("🛑 Stopping training to prevent system crash...")
+                    return False  # Stop training
+                
+                # Force garbage collection every 1000 steps
+                if self.n_calls % 1000 == 0:
+                    gc.collect()
+                    if self.verbose > 0:
+                        print("🧹 Garbage collection performed")
+            
+            return True
+    
+    # Train the model with memory monitoring
     model.learn(
         total_timesteps=config["total_timesteps"],
-        callback=WandbCallback(
-            gradient_save_freq=100,
-            model_save_path=f"wandb/latest-run/models/{run.id}",
-            verbose=2,
-        ),
+        callback=[
+            WandbCallback(
+                gradient_save_freq=100,  # Very frequent checkpoints
+                model_save_path=f"wandb/latest-run/models/{run.id}",
+                verbose=2,
+            ),
+            MemoryCallback(check_freq=100, verbose=1)  # Check memory every 100 steps
+        ],
     )
     
     # Save final model
@@ -328,13 +376,32 @@ if __name__ == '__main__':
     os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
     model.save(final_model_path)
     
-    # Upload videos to WandB
+    # Upload videos to WandB as artifacts
     video_dir = f"wandb/latest-run/videos/{run.id}"
     if os.path.exists(video_dir):
         video_files = glob.glob(os.path.join(video_dir, "*.mp4"))
-        for video_path in video_files:
-            video_name = os.path.basename(video_path)
-            wandb.log({f"videos/{video_name}": wandb.Video(video_path, fps=4, format="mp4")})
+        if video_files:
+            # Create a WandB artifact for training videos
+            artifact = wandb.Artifact(
+                name=f"training_videos_{run.id}",
+                type="video",
+                description=f"Training videos from ELENDIL environment run {run.id}"
+            )
+            
+            # Add all video files to the artifact
+            for video_path in video_files:
+                video_name = os.path.basename(video_path)
+                artifact.add_file(video_path, name=video_name)
+                print(f"✅ Added video to artifact: {video_name}")
+            
+            # Log the artifact
+            run.log_artifact(artifact)
+            print(f"✅ Uploaded {len(video_files)} videos as WandB artifact")
+            
+            # Also log individual videos for immediate viewing
+            for video_path in video_files:
+                video_name = os.path.basename(video_path)
+                wandb.log({f"videos/{video_name}": wandb.Video(video_path, fps=4, format="mp4")})
     
     # Upload final model to WandB
     if os.path.exists(final_model_path):
