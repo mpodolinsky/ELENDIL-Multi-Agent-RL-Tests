@@ -1,4 +1,4 @@
-name: 'moving_target'
+name: 'tango_target'
 color: [255, 100, 100]
 movement_speed: 1
 movement_range: 1

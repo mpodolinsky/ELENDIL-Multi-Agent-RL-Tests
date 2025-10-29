@@ -1,0 +1,10 @@
+name: "epsilon_air"
+type: "ObserverAgent"
+color: [100, 100, 255]
+env_size: None  # Will be updated with actual size
+fov_base_size: 3
+outline_width: 2
+box_scale: 0.7
+show_target_coords: False
+target_detection_probs: [1, 0.66, 0.33]
+max_altitude: 3
