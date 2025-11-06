@@ -6,6 +6,7 @@ import yaml
 import wandb
 import numpy as np
 from pathlib import Path
+from gymnasium.spaces import Discrete
 
 # Add ELENDIL package to Python path
 elendil_path = "/mnt/data/Documents/Project_M/ELENDIL"
@@ -28,8 +29,16 @@ ObservationFlattenWrapper = observation_flatten_wrapper.ObservationFlattenWrappe
 from agilerl.algorithms.maddpg import MADDPG
 import torch
 
-def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True):
-    """Evaluate a trained MADDPG model and optionally record videos."""
+def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True, run_dir=None):
+    """Evaluate a trained MADDPG model and optionally record videos.
+    
+    Args:
+        checkpoint_path: Path to the checkpoint file
+        model_id: Model ID string
+        num_episodes: Number of episodes to evaluate
+        record_video: Whether to record videos
+        run_dir: Original run directory path (for video saving location)
+    """
     
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = 'cpu'
@@ -93,13 +102,22 @@ def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True)
     
     agent.load_checkpoint(checkpoint_path)
     print("✅ Model loaded successfully")
+    print(f"✅ Agent IDs in loaded model: {agent.agent_ids}")
+    print(f"✅ Environment agent IDs: {agent_ids}")
+    
+    # Ensure agent IDs match
+    if set(agent.agent_ids) != set(agent_ids):
+        print(f"⚠️  Warning: Agent IDs mismatch! Using agent IDs from loaded model: {agent.agent_ids}")
+        agent_ids = agent.agent_ids
     
     # Extract model name from checkpoint path for video directory naming
     model_name = os.path.basename(checkpoint_path).replace('.pt', '')
     
     # Create video directory with model_id and model name
     if record_video:
-        video_dir = Path(f"wandb/latest-run/videos/evaluation_{model_id}")
+        # Use run_dir if provided, otherwise use latest-run
+        base_dir = run_dir if run_dir else "wandb/latest-run"
+        video_dir = Path(base_dir) / "videos" / f"evaluation_{model_id}"
         video_dir.mkdir(parents=True, exist_ok=True)
     
     # Evaluate for multiple episodes
@@ -111,10 +129,59 @@ def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True)
         frames = []
         done = False
         step_count = 0
+        # Store last observation for each agent (for terminated agents)
+        last_obs = {agent_id: obs.get(agent_id, None) for agent_id in agent_ids}
         
         while not done and step_count < env_config["max_steps"]:
             # Get actions
-            actions, _ = agent.get_action(obs=obs, infos=info)
+            # The agent expects ALL agent_ids to be present in observations
+            # If an agent is terminated and not in obs, we need to provide a default observation
+            filtered_obs = {}
+            filtered_info = {}
+            for agent_id in agent.agent_ids:
+                if agent_id in obs:
+                    filtered_obs[agent_id] = obs[agent_id]
+                    filtered_info[agent_id] = info.get(agent_id, {})
+                else:
+                    # Agent is terminated - use last known observation
+                    if last_obs[agent_id] is not None:
+                        filtered_obs[agent_id] = last_obs[agent_id]
+                    else:
+                        # Fallback: use zero observation
+                        obs_space = wrapped_env.observation_space(agent_id)
+                        if hasattr(obs_space, 'shape'):
+                            filtered_obs[agent_id] = np.zeros(obs_space.shape, dtype=obs_space.dtype)
+                        else:
+                            filtered_obs[agent_id] = np.zeros(27, dtype=np.float32)
+                    filtered_info[agent_id] = {}
+            
+            if not filtered_obs:
+                print(f"⚠️  No valid observations for agent.agent_ids: {agent.agent_ids}")
+                print(f"   Available obs keys: {list(obs.keys())}")
+                break
+            
+            try:
+                actions, _ = agent.get_action(obs=filtered_obs, infos=filtered_info)
+            except KeyError as e:
+                print(f"❌ Error in get_action: {e}")
+                print(f"   filtered_obs keys: {list(filtered_obs.keys())}")
+                print(f"   agent.agent_ids: {agent.agent_ids}")
+                print(f"   obs keys (from env): {list(obs.keys())}")
+                raise
+            
+            # Ensure actions dict has all agents from obs (for terminated agents, use last action or no-op)
+            full_actions = {}
+            for agent_id in obs.keys():
+                if agent_id in actions:
+                    full_actions[agent_id] = actions[agent_id]
+                else:
+                    # Agent is terminated, use a default action (no-op)
+                    action_space = wrapped_env.action_space(agent_id)
+                    if isinstance(action_space, Discrete):
+                        full_actions[agent_id] = 0  # No-op action
+                    else:
+                        full_actions[agent_id] = np.zeros(action_space.shape, dtype=action_space.dtype)
+            actions = full_actions
             
             # Render and save frame if recording
             if record_video:
@@ -125,9 +192,18 @@ def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True)
             # Step environment
             next_obs, rewards, terminations, truncations, infos = wrapped_env.step(actions)
             
-            # Accumulate rewards
+            # Update last observations for all agents
             for agent_id in agent_ids:
-                episode_running_rewards[agent_id] += rewards[agent_id]
+                if agent_id in next_obs:
+                    last_obs[agent_id] = next_obs[agent_id]
+            
+            # Accumulate rewards (only for agents that are still active)
+            # Note: In multi-agent environments, terminated agents may not appear in rewards dict
+            for agent_id in agent_ids:
+                if agent_id in rewards:
+                    episode_running_rewards[agent_id] += rewards[agent_id]
+                # If agent is not in rewards but was in agent_ids, it's likely terminated
+                # The running reward stays at its last value (which is fine)
             
             obs = next_obs
             step_count += 1
@@ -144,58 +220,54 @@ def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True)
         # Save video if recording
         if record_video and frames:
             import imageio
-            video_path = video_dir / f"episode_{episode + 1}.mp4"
+            video_filename = f"{model_id}_episode_{episode + 1}.mp4"
+            video_path = video_dir / video_filename
             imageio.mimsave(str(video_path), frames, fps=10)
             print(f"📹 Saved video to {video_path}")
     
-    # Upload videos directly to wandb run if recording
+    # Log videos to wandb if recording
     if record_video and video_dir.exists():
-        print(f"\n📤 Uploading videos to wandb...")
+        print(f"\n📤 Logging videos to wandb...")
         try:
-            # Check for latest-run and connect to it if no active run
+            # Ensure wandb run is active
             if wandb.run is None:
                 latest_run_symlink = Path("wandb/latest-run")
                 if latest_run_symlink.exists() and latest_run_symlink.is_symlink():
-                    # Read the actual target directory
                     target_path = latest_run_symlink.resolve()
-                    # Extract run ID from directory name (format: run-TIMESTAMP-ID)
                     run_dir_name = target_path.name
                     parts = run_dir_name.split('-')
                     if len(parts) >= 3:
-                        run_id = parts[-1]  # Get the last part (the unique ID)
+                        run_id = parts[-1]
                         print(f"📋 Found latest run: {run_id}")
-                        
-                        # Try to resume the run
                         try:
-                            # Use the same project name as the training scripts
                             project_name = "ELENDIL"
-                            
-                            # Initialize wandb to resume the existing run
+                            try:
+                                config_path = Path("configs/train_configs/agilerl_maddpg_test_run.yaml")
+                                if config_path.exists():
+                                    with open(config_path) as f:
+                                        config = yaml.safe_load(f)
+                                        project_name = config.get("wandb", {}).get("project", "ELENDIL")
+                            except:
+                                pass
                             wandb.init(id=run_id, resume="allow", project=project_name)
                             print(f"✅ Connected to run: {run_id}")
                         except Exception as e:
-                            print(f"⚠️  Could not resume run {run_id}: {e}")
-                            print("🔄 Initializing new wandb run instead...")
+                            print(f"⚠️  Could not resume run: {e}")
                             wandb.init(project=project_name)
-                    else:
-                        print("⚠️  Could not parse run ID from directory name")
-                        print("🔄 Initializing new wandb run...")
-                        wandb.init(project="ELENDIL")
                 else:
-                    print("⚠️  No latest-run found. Starting new wandb session...")
                     wandb.init(project="ELENDIL")
             
+            # Log each video using wandb.Video
             if wandb.run is not None:
-                # Log each video directly to the wandb run
-                for video_file in sorted(video_dir.glob("*.mp4")):
-                    video_name = video_file.stem  # e.g., "episode_1"
+                for video_file in sorted(video_dir.glob(f"{model_id}_*.mp4")):
+                    video_name = video_file.stem  # e.g., "_0_10000_episode_1"
                     wandb.log({f"evaluation/videos/{video_name}": wandb.Video(str(video_file))})
-                    print(f"  ✅ Uploaded {video_file.name} to wandb")
-                print(f"✅ Successfully uploaded {num_episodes} videos to wandb")
+                    print(f"  ✅ Logged {video_file.name} to wandb")
+                print(f"✅ Successfully logged videos for {model_id} to wandb")
             else:
                 print("⚠️  Could not connect to wandb run. Videos saved locally only.")
         except Exception as e:
-            print(f"⚠️  Error uploading videos to wandb: {e}")
+            print(f"⚠️  Error logging videos to wandb: {e}")
             import traceback
             traceback.print_exc()
     
@@ -217,14 +289,20 @@ if __name__ == "__main__":
     parser.add_argument("model_id", help="Model ID string, e.g., _0_10000")
     parser.add_argument("--num_episodes", type=int, default=5, help="Number of episodes to evaluate")
     parser.add_argument("--no_video", action="store_true", help="Don't record videos")
+    parser.add_argument("--run_dir", type=str, default=None, help="Original run directory path (before resume)")
     args = parser.parse_args()
 
-    checkpoint_path = f"wandb/latest-run/{args.model_id}.pt"
+    # Use provided run_dir, or fallback to latest-run
+    if args.run_dir and os.path.exists(args.run_dir):
+        checkpoint_path = os.path.join(args.run_dir, f"{args.model_id}.pt")
+    else:
+        checkpoint_path = f"wandb/latest-run/{args.model_id}.pt"
     evaluate_model(
         checkpoint_path=checkpoint_path,
         model_id=args.model_id,
         num_episodes=args.num_episodes,
-        record_video=not args.no_video
+        record_video=not args.no_video,
+        run_dir=args.run_dir
     )
 
     # Example usage:

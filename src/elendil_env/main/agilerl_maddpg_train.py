@@ -11,7 +11,6 @@ import torch
 import yaml
 import wandb
 import time
-from agilerl.algorithms.core.registry import HyperparameterConfig, RLParameter
 from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from agilerl.hpo.mutation import Mutations
 from agilerl.hpo.tournament import TournamentSelection
@@ -31,6 +30,7 @@ spec = importlib.util.spec_from_file_location(
 observation_flatten_wrapper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(observation_flatten_wrapper)
 ObservationFlattenWrapper = observation_flatten_wrapper.ObservationFlattenWrapper
+
 
 if __name__ == "__main__":
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     
     # WandB initialization
     run = wandb.init(
-        project="ELENDIL",
+        project="ELENDIL-dummy",
         name=f"ELENDIL_agilerl_maddpg_train_func_{time.strftime('%Y%m%d-%H%M%S')}",
         tags=["medium_env_obstacles", "elendil", "parallel", "1g1a1t", "maddpg", "agilerl", "4_envs", "default_hp_agilerl", "seed=1"],
         notes="ELENDIL environment using AgileRL's MADDPG with train_multi_agent_off_policy function, observation flattening wrapper, 1 ground agent, 1 air observer agent, 1 target, medium env.",
@@ -155,17 +155,6 @@ if __name__ == "__main__":
     # When using Box spaces (after flattening), AgileRL expects encoder_config
     NET_CONFIG = None  # Let AgileRL auto-configure for Box spaces
 
-    # Default from https://docs.agilerl.com/en/latest/tutorials/pettingzoo/matd3.html
-    # Mutation config for RL hyperparameters
-    hp_config = HyperparameterConfig(
-        lr_actor=RLParameter(min=1e-4, max=1e-2),
-        lr_critic=RLParameter(min=1e-4, max=1e-2),
-        batch_size=RLParameter(min=8, max=512, dtype=int),
-        # learn_step=RLParameter(min=20, max=200, dtype=int),
-        gamma=RLParameter(min=0.90, max=0.99),
-    )
-
-    # Defaults from https://docs.agilerl.com/en/latest/tutorials/pettingzoo/matd3.html
     # Create mutations and tournament selection
     # Note: For population_size=1, mutations may not be needed
     mutations = Mutations(
