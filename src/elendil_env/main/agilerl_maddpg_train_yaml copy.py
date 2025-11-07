@@ -23,6 +23,7 @@ from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
 from tqdm import trange
 
 from elendil.envs.grid_world_multi_agent import GridWorldEnvParallel
+from elendil.envs.grid_world_multi_agent import GridWorldEnvParallelExploration
 
 # Import the wrapper module directly
 import importlib.util
@@ -49,17 +50,31 @@ def save_config_as_wandb_artifact(run, config_path, artifact_name):
     print(f"Saved {config_path} as WandB artifact: {artifact_name}")
 
 
-def evaluate_checkpointed_models(run_id, num_episodes=5):
-    """Find all checkpointed models with _0_ pattern and evaluate them."""
+def evaluate_checkpointed_models(run_id, run_dir=None, num_episodes=5, project_name=None):
+    """Find all checkpointed models with _0_ pattern and evaluate them.
+    
+    Args:
+        run_id: The WandB run ID
+        run_dir: The original run directory path (before resume). If None, searches wandb/run-*-{run_id}/
+        num_episodes: Number of episodes to evaluate each checkpoint
+        project_name: The WandB project name
+    """
     import re
     import glob
     import subprocess
+    from pathlib import Path
     
     # Find all checkpoint files with _0_ pattern
-    checkpoint_patterns = [
-        f"wandb/latest-run/_0_*.pt",
-        f"wandb/run-*-{run_id}/_0_*.pt"
-    ]
+    checkpoint_patterns = []
+    
+    if run_dir and os.path.exists(run_dir):
+        # Use the original run directory if provided
+        checkpoint_patterns.append(f"{run_dir}/_0_*.pt")
+    else:
+        # Fallback: search for run directories matching the run_id
+        checkpoint_patterns.append(f"wandb/run-*-{run_id}/_0_*.pt")
+        # Also check latest-run as fallback
+        checkpoint_patterns.append(f"wandb/latest-run/_0_*.pt")
     
     checkpoint_files = []
     for pattern in checkpoint_patterns:
@@ -96,8 +111,15 @@ def evaluate_checkpointed_models(run_id, num_episodes=5):
         print(f"{'='*70}")
         
         try:
+            # Build command with run_dir and project_name if provided
+            cmd = [sys.executable, eval_script_path, model_id, "--num_episodes", str(num_episodes)]
+            if run_dir:
+                cmd.extend(["--run_dir", run_dir])
+            if project_name:
+                cmd.extend(["--project_name", project_name])
+            
             result = subprocess.run(
-                [sys.executable, eval_script_path, model_id, "--num_episodes", str(num_episodes)],
+                cmd,
                 cwd=os.getcwd(),
                 capture_output=False,
                 text=True
@@ -118,7 +140,8 @@ def evaluate_checkpointed_models(run_id, num_episodes=5):
 
 if __name__ == "__main__":
     # Load training configuration
-    train_config = load_yaml_config("configs/train_configs/agilerl_ippo_test_run.yaml")
+    train_config_path = "configs/train_configs/exploration_agilerl_maddpg_test_run.yaml"
+    train_config = load_yaml_config(train_config_path)
     
     # Extract WandB configuration
     wandb_config = train_config["wandb"]
@@ -170,7 +193,7 @@ if __name__ == "__main__":
     
     # Save all config files as WandB artifacts
     print("\nSaving configuration files as WandB artifacts...")
-    save_config_as_wandb_artifact(run, "configs/train_configs/agilerl_ippo_test_run.yaml", "train_config")
+    save_config_as_wandb_artifact(run, train_config_path, "train_config")
     save_config_as_wandb_artifact(run, env_config_path, "env_config")
     save_config_as_wandb_artifact(run, ground_agent_config_path, "ground_agent_config")
     save_config_as_wandb_artifact(run, air_agent_config_path, "air_observer_agent_config")
@@ -216,6 +239,7 @@ if __name__ == "__main__":
             enable_obstacles=env_config["enable_obstacles"],
             num_obstacles=env_config["num_obstacles"],
             num_visual_obstacles=env_config["num_visual_obstacles"],
+            death_on_sight=env_config["death_on_sight"],
         )
 
     # Create vectorized environment wrapped with observation flatten wrapper
@@ -230,7 +254,76 @@ if __name__ == "__main__":
     # For visualization, you'll need to use the eval script: src/elendil/test/agilerl_maddpg_eval.py
     print("Note: Use agilerl_maddpg_eval.py to generate videos after training")
     
-    env.reset()
+    # Verify that num_envs is actually being used
+    print(f"\n{'='*70}")
+    print(f"Verifying vectorized environment with {num_envs} environments...")
+    print(f"{'='*70}")
+    obs, info = env.reset()
+    
+    # Check if observations/rewards are batched (vectorized envs return batched data)
+    print(f"Environment reset successful. Checking observation and reward shapes...")
+    for agent_id in env.agents:
+        agent_obs = obs[agent_id]
+        print(f"  Agent {agent_id}: observation type={type(agent_obs)}, shape={getattr(agent_obs, 'shape', 'N/A')}")
+    
+    # Test a step to verify rewards are batched
+    print(f"\nTesting environment step to verify batching...")
+    # Get actions from agent (will handle batching internally if needed)
+    test_actions = {}
+    for agent_id in env.agents:
+        action_space = env.single_action_space(agent_id)
+        sample_action = action_space.sample()
+        # For vectorized env, we need batched actions
+        # Check if action_space supports sampling with shape
+        try:
+            # Try to sample with batch shape
+            batched_action = action_space.sample() if not hasattr(action_space, 'sample') else action_space.sample()
+            if isinstance(batched_action, np.ndarray) and len(batched_action.shape) == 0:
+                # Scalar, need to create array
+                test_actions[agent_id] = np.array([batched_action] * num_envs)
+            elif isinstance(batched_action, np.ndarray):
+                # Already array, tile it
+                test_actions[agent_id] = np.tile(batched_action, (num_envs, 1)) if len(batched_action.shape) == 1 else np.tile(batched_action, (num_envs, *([1]*len(batched_action.shape))))
+            else:
+                # Not numpy, create array
+                test_actions[agent_id] = np.array([batched_action] * num_envs)
+        except:
+            # Fallback: create array of samples
+            test_actions[agent_id] = np.array([action_space.sample() for _ in range(num_envs)])
+    
+    next_obs, rewards, terminations, truncations, infos = env.step(test_actions)
+    
+    # Verify rewards are batched
+    print(f"Reward shapes after step:")
+    for agent_id in env.agents:
+        agent_rewards = rewards[agent_id]
+        reward_shape = getattr(agent_rewards, 'shape', 'N/A')
+        print(f"  Agent {agent_id}: reward type={type(agent_rewards)}, shape={reward_shape}")
+        
+        # Check if rewards are properly batched
+        if isinstance(agent_rewards, np.ndarray):
+            if len(agent_rewards.shape) > 0:
+                reward_batch_size = agent_rewards.shape[0]
+                if reward_batch_size == num_envs:
+                    print(f"    ✅ Correctly batched: {reward_batch_size} environments")
+                else:
+                    print(f"    ⚠️  WARNING: Expected {num_envs} environments, got batch_size={reward_batch_size}")
+            else:
+                print(f"    ⚠️  WARNING: Reward is scalar (not batched)")
+        else:
+            # Check if it's a list or other iterable
+            try:
+                reward_len = len(agent_rewards)
+                if reward_len == num_envs:
+                    print(f"    ✅ Correctly batched: {reward_len} environments")
+                else:
+                    print(f"    ⚠️  WARNING: Expected {num_envs} environments, got length={reward_len}")
+            except:
+                print(f"    ⚠️  WARNING: Cannot determine batch size from type {type(agent_rewards)}")
+    
+    print(f"\n{'='*70}")
+    print(f"✅ Environment verification complete. If batch sizes match {num_envs}, vectorization is working.")
+    print(f"{'='*70}\n")
 
     # Configure the multi-agent algo input arguments
     observation_spaces = [env.single_observation_space(agent) for agent in env.agents]
@@ -339,6 +432,14 @@ if __name__ == "__main__":
         if 'run' in locals():
             run_id = run.id
             
+            # Save the original run directory before resuming (resume creates new latest-run)
+            original_run_dir = None
+            latest_run_symlink = os.path.join("wandb", "latest-run")
+            if os.path.exists(latest_run_symlink) and os.path.islink(latest_run_symlink):
+                # Get the actual directory path that latest-run points to
+                original_run_dir = os.path.realpath(latest_run_symlink)
+                print(f"📁 Original run directory: {original_run_dir}")
+            
             # Resume the run in case AgileRL closed it
             try:
                 api = wandb.Api()
@@ -360,7 +461,7 @@ if __name__ == "__main__":
             print(f"\n{'='*70}")
             print(f"Starting evaluation of all checkpointed models")
             print(f"{'='*70}")
-            evaluate_checkpointed_models(run_id, num_episodes=5)
+            evaluate_checkpointed_models(run_id, run_dir=original_run_dir, num_episodes=5, project_name=wandb_config["project"])
         
         # Finish WandB run
         wandb.finish()

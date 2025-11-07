@@ -13,6 +13,7 @@ wandb:
     - "4_envs"
     - "seed=1"
     - "test_run"
+    - "asg_server_run"
   notes: "TEST RUN: ELENDIL environment using AgileRL's MADDPG with train_multi_agent_off_policy function, observation flattening wrapper, 1 ground agent, 1 air observer agent, 1 target, medium env."
 
 # Training Hyperparameters
@@ -57,7 +58,7 @@ hyperparameters:
   checkpoint_interval: null  # Will be calculated as total_timesteps / 10
   
   # Device
-  device: "cpu"
+  device: "cuda"
   
   # Mutation probabilities (for population_size > 1)
   mutation:

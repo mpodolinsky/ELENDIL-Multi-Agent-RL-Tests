@@ -16,6 +16,7 @@ obstacle_collision_penalty: -0.05
 no_target: False
 agents: None
 target_config: None
+death_on_sight: True
 
 # Obstacles
 enable_obstacles: True

@@ -1,0 +1,61 @@
+name: elendil_conda
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # ---- Core ----
+  - python=3.12.3
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - pillow
+  - h5py
+  - tqdm
+  - psutil
+  - cffi
+  - grpcio
+  - google-crc32c
+  - shapely
+  - av
+  - opencv
+  - pytz
+  - tzdata
+
+  # ---- PyTorch CUDA stack ----
+  - pytorch
+  - torchvision
+  - torchaudio
+  - tensordict
+  - pytorch-cuda 
+
+  # ---- Optional plotting / utils ----
+  - seaborn
+  - rich
+  - gitpython
+
+  # ---- pip-only packages ----
+  - pip:
+      # RL & environments
+      - agilerl
+      - pettingzoo
+      - supersuit
+      - stable-baselines3
+
+      # Logging / tracking
+      - wandb
+      - tensorboard
+
+      # I/O & video
+      - imageio
+      - imageio-ffmpeg
+      - moviepy
+      - orjson
+
+      # Model building / config management
+      - hydra-core
+      - omegaconf

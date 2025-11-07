@@ -29,7 +29,7 @@ ObservationFlattenWrapper = observation_flatten_wrapper.ObservationFlattenWrappe
 from agilerl.algorithms.maddpg import MADDPG
 import torch
 
-def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True, run_dir=None):
+def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True, run_dir=None, project_name=None):
     """Evaluate a trained MADDPG model and optionally record videos.
     
     Args:
@@ -38,10 +38,11 @@ def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True,
         num_episodes: Number of episodes to evaluate
         record_video: Whether to record videos
         run_dir: Original run directory path (for video saving location)
+        project_name: WandB project name
     """
     
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = 'cpu'
+    device = 'cuda'
     print(f"Using device: {device}")
     
     # Load configuration files
@@ -240,22 +241,57 @@ def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True,
                         run_id = parts[-1]
                         print(f"📋 Found latest run: {run_id}")
                         try:
-                            project_name = "ELENDIL"
-                            try:
-                                config_path = Path("configs/train_configs/agilerl_maddpg_test_run.yaml")
-                                if config_path.exists():
-                                    with open(config_path) as f:
-                                        config = yaml.safe_load(f)
-                                        project_name = config.get("wandb", {}).get("project", "ELENDIL")
-                            except:
-                                pass
+                            # Use provided project_name, or try to determine it
+                            if project_name is None:
+                                project_name = "ELENDIL"  # Default fallback
+                                try:
+                                    api = wandb.Api()
+                                    # Try to find the run by ID (may need to search across projects)
+                                    # First, try reading from the same config file as training script
+                                    config_path = Path("configs/train_configs/agilerl_maddpg_config.yaml")
+                                    if config_path.exists():
+                                        with open(config_path) as f:
+                                            config = yaml.safe_load(f)
+                                            project_name = config.get("wandb", {}).get("project", "ELENDIL")
+                                    else:
+                                        # Fallback: try to get project from wandb run metadata
+                                        # Search in common project names
+                                        for proj in ["ELENDIL", "ELENDIL-dummy"]:
+                                            try:
+                                                run = api.run(f"{proj}/{run_id}")
+                                                project_name = proj
+                                                break
+                                            except:
+                                                continue
+                                except Exception as e:
+                                    print(f"⚠️  Could not determine project name: {e}")
+                                    # Fallback to reading config
+                                    try:
+                                        config_path = Path("configs/train_configs/agilerl_maddpg_config.yaml")
+                                        if config_path.exists():
+                                            with open(config_path) as f:
+                                                config = yaml.safe_load(f)
+                                                project_name = config.get("wandb", {}).get("project", "ELENDIL")
+                                    except:
+                                        pass
                             wandb.init(id=run_id, resume="allow", project=project_name)
-                            print(f"✅ Connected to run: {run_id}")
+                            print(f"✅ Connected to run: {run_id} in project: {project_name}")
                         except Exception as e:
                             print(f"⚠️  Could not resume run: {e}")
                             wandb.init(project=project_name)
                 else:
-                    wandb.init(project="ELENDIL")
+                    # Fallback: try to read from config file or use provided project_name
+                    if project_name is None:
+                        project_name = "ELENDIL"
+                        try:
+                            config_path = Path("configs/train_configs/agilerl_maddpg_config.yaml")
+                            if config_path.exists():
+                                with open(config_path) as f:
+                                    config = yaml.safe_load(f)
+                                    project_name = config.get("wandb", {}).get("project", "ELENDIL")
+                        except:
+                            pass
+                    wandb.init(project=project_name)
             
             # Log each video using wandb.Video
             if wandb.run is not None:
@@ -290,6 +326,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_episodes", type=int, default=5, help="Number of episodes to evaluate")
     parser.add_argument("--no_video", action="store_true", help="Don't record videos")
     parser.add_argument("--run_dir", type=str, default=None, help="Original run directory path (before resume)")
+    parser.add_argument("--project_name", type=str, default=None, help="WandB project name")
     args = parser.parse_args()
 
     # Use provided run_dir, or fallback to latest-run
@@ -302,7 +339,8 @@ if __name__ == "__main__":
         model_id=args.model_id,
         num_episodes=args.num_episodes,
         record_video=not args.no_video,
-        run_dir=args.run_dir
+        run_dir=args.run_dir,
+        project_name=args.project_name
     )
 
     # Example usage:

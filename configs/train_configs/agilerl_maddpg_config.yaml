@@ -12,6 +12,9 @@ wandb:
     - "agilerl"
     - "4_envs"
     - "seed=1"
+    - "asg_server_run"
+    - "death_on_sight"
+    - "show_target_coords"
   notes: "ELENDIL environment using AgileRL's MADDPG with train_multi_agent_off_policy function, observation flattening wrapper, 1 ground agent, 1 air observer agent, 1 target, medium env."
 
 # Training Hyperparameters
@@ -28,7 +31,7 @@ hyperparameters:
   population_size: 1
   batch_size: 128
   memory_size: 100_000
-  learn_step: 1
+  learn_step: 25
   
   # Noise settings
   o_u_noise: True
@@ -56,7 +59,7 @@ hyperparameters:
   checkpoint_interval: null  # Will be calculated as total_timesteps / 10
   
   # Device
-  device: "cpu"
+  device: "cuda"
   
   # Mutation probabilities (for population_size > 1)
   mutation:
