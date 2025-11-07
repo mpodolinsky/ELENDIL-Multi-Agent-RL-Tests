@@ -13,7 +13,7 @@ elendil_path = "/mnt/data/Documents/Project_M/ELENDIL"
 if elendil_path not in sys.path:
     sys.path.insert(0, elendil_path)
 
-from elendil.envs.grid_world_multi_agent import GridWorldEnvParallel
+from elendil.envs.grid_world_multi_agent import GridWorldEnvParallel, GridWorldEnvParallelExploration
 
 # Import the wrapper module directly
 import importlib.util
@@ -63,7 +63,7 @@ def evaluate_model(checkpoint_path, model_id, num_episodes=5, record_video=True,
     
     # Create evaluation environment with rendering
     print("🏗️  Creating evaluation environment...")
-    base_env = GridWorldEnvParallel(
+    base_env = GridWorldEnvParallelExploration(
         size=env_config["size"],
         max_steps=env_config["max_steps"],
         render_mode="rgb_array" if record_video else None,

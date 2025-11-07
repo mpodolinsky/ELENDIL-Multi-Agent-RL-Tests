@@ -23,6 +23,7 @@ from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
 from tqdm import trange
 
 from elendil.envs.grid_world_multi_agent import GridWorldEnvParallel
+from elendil.envs.grid_world_multi_agent import GridWorldEnvParallelExploration
 
 # Import the wrapper module directly
 import importlib.util
@@ -136,7 +137,7 @@ def evaluate_checkpointed_models(run_id, run_dir=None, num_episodes=5):
 
 if __name__ == "__main__":
     # Load training configuration
-    train_config_path = "configs/train_configs/agilerl_maddpg_test_run.yaml"
+    train_config_path = "configs/train_configs/exploration_agilerl_maddpg_test_run.yaml"
     train_config = load_yaml_config(train_config_path)
     
     # Extract WandB configuration
