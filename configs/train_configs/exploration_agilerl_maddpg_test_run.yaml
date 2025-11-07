@@ -1,0 +1,73 @@
+# AgileRL MADDPG Training Configuration
+
+# WandB Configuration
+wandb:
+  project: "ELENDIL-Explore-Dummy"
+  name_prefix: "medium_maddpg_1g1a1t_4_envs_test_run"
+  tags: # Required: - env_size - env_type - agent_mix - algorithm - framework - num_envs - seed
+    - "medium_env_obstacles"
+    - "elendil-explore"
+    - "1g1a1t"
+    - "maddpg"
+    - "agilerl"
+    - "4_envs"
+    - "seed=1"
+    - "test_run"
+  notes: "TEST RUN: ELENDIL environment using AgileRL's MADDPG with train_multi_agent_off_policy function, observation flattening wrapper, 1 ground agent, 1 air observer agent, 1 target, medium env."
+
+# Training Hyperparameters
+hyperparameters:
+  # Environment settings
+  env_name: "GridWorldEnvParallelExploration" # Do not change this
+  total_timesteps: 30_000
+  num_envs: 4
+  
+  # Algorithm settings
+  algorithm: "MADDPG"
+  
+  # Population and training settings
+  population_size: 1
+  batch_size: 128
+  memory_size: 100_000
+  learn_step: 25
+  
+  # Noise settings
+  o_u_noise: True
+  expl_noise: 0.1
+  mean_noise: 0.0
+  theta: 0.15
+  dt: 0.01
+  
+  # Learning rates
+  lr_actor: 0.001
+  lr_critic: 0.001
+  
+  # Discount factor
+  gamma: 0.95
+  
+  # Target network update
+  tau: 0.01
+  
+  # Evolutionary settings
+  evo_steps: 10_000
+  eval_loop: 10
+  learning_delay: 500
+  
+  # Checkpoint settings
+  checkpoint_interval: null  # Will be calculated as total_timesteps / 10
+  
+  # Device
+  device: "cpu"
+  
+  # Mutation probabilities (for population_size > 1)
+  mutation:
+    no_mutation: 0.2
+    architecture: 0.2
+    new_layer_prob: 0.2
+    parameters: 0.2
+    activation: 0.0
+    rl_hp: 0.2
+    mutation_sd: 0.1
+    mutate_elite: True
+    rand_seed: 1
+  
